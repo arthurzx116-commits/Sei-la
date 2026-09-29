@@ -12,16 +12,17 @@ jobs:
       - name: Configure RDP
         shell: powershell
         run: |
-          # Habilita o RDP no registro (Não precisa reiniciar o serviço)
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name 'UserAuthentication' -Value 1
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name 'SecurityLayer' -Value 2
+          $rdpPath = 'HKLM:\System\CurrentControlSet\Control\Terminal Server'
+          $tcpPath = 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
           
-          # Adiciona a regra de firewall direto na porta 3389 (Muito mais rápido e não depende de idioma)
-          netsh advfirewall firewall delete rule name="RDP-TCP" 2>$null
-          netsh advfirewall firewall add rule name="RDP-TCP" dir=in action=allow protocol=TCP localport=3389
+          Set-ItemProperty -Path $rdpPath -Name 'fDenyTSConnections' -Value 0
+          Set-ItemProperty -Path $tcpPath -Name 'UserAuthentication' -Value 1
+          Set-ItemProperty -Path $tcpPath -Name 'SecurityLayer' -Value 2
           
-          Write-Host "✅ RDP habilitado com sucesso!"
+          netsh advfirewall firewall delete rule name="RDP-Tailscale" 2>$null
+          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+          
+          Write-Host "✅ RDP configurado!"
 
       - name: Create RDP User
         shell: powershell
@@ -30,11 +31,10 @@ jobs:
           $Password = "P@ssw0rd2024!RDP" 
           $SecurePassword = ConvertTo-SecureString $Password -AsPlainText -Force
           
-          # Cria o usuário Skyro
           New-LocalUser -Name $Username -Password $SecurePassword -FullName $Username -Description "Usuario RDP"
           Add-LocalGroupMember -Group "Administrators" -Member $Username
           
-          Write-Host "✅ Usuário $Username criado com sucesso!"
+          Write-Host "✅ Usuário $Username criado!"
 
       - name: Install Tailscale
         shell: powershell
@@ -47,7 +47,7 @@ jobs:
       - name: Establish Tailscale Connection
         shell: powershell
         run: |
-          # O comando 'up' SEM chave vai gerar o link de login no log
+          # Gera o link de login no log (sem precisar de chave)
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up
           
           Write-Host "⚠️ ATENÇÃO: PROCURE O LINK ACIMA E CLIQUE NELE PARA AUTORIZAR A MÁQUINA ⚠️"
@@ -67,5 +67,5 @@ jobs:
       - name: Maintain Connection
         shell: powershell
         run: |
-          # Loop infinito para a máquina não desligar
+          # Mantém a máquina ligada por até 6 horas
           while ($true) { Start-Sleep -Seconds 3600 }
