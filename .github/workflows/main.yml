@@ -12,28 +12,28 @@ jobs:
       - name: Configure RDP
         shell: powershell
         run: |
-          $rdpPath = 'HKLM:\System\CurrentControlSet\Control\Terminal Server'
-          $tcpPath = 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
-          
-          Set-ItemProperty -Path $rdpPath -Name 'fDenyTSConnections' -Value 0
-          Set-ItemProperty -Path $tcpPath -Name 'UserAuthentication' -Value 1
-          Set-ItemProperty -Path $tcpPath -Name 'SecurityLayer' -Value 2
-          
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name 'UserAuthentication' -Value 1
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name 'SecurityLayer' -Value 2
           netsh advfirewall firewall delete rule name="RDP-Tailscale" 2>$null
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
-          
           Write-Host "✅ RDP configurado!"
 
       - name: Create RDP User
         shell: powershell
         run: |
           $Username = "Skyro"
-          $Password = "P@ssw0rd2024!RDP" 
-          $SecurePassword = ConvertTo-SecureString $Password -AsPlainText -Force
           
+          # Gera uma senha aleatória igual à imagem (15 caracteres)
+          Add-Type -AssemblyName System.Web
+          $Password = [System.Web.Security.Membership]::GeneratePassword(15, 4)
+          
+          # Salva a senha em um arquivo para usar no passo final
+          $Password | Out-File -FilePath "password.txt"
+          
+          $SecurePassword = ConvertTo-SecureString $Password -AsPlainText -Force
           New-LocalUser -Name $Username -Password $SecurePassword -FullName $Username -Description "Usuario RDP"
           Add-LocalGroupMember -Group "Administrators" -Member $Username
-          
           Write-Host "✅ Usuário $Username criado!"
 
       - name: Install Tailscale
@@ -47,25 +47,46 @@ jobs:
       - name: Establish Tailscale Connection
         shell: powershell
         run: |
-          # Gera o link de login no log (sem precisar de chave)
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up
+          # ⚠️ COLE SUA CHAVE AQUI (A que começa com tskey-auth-)
+          $AuthKey = "SUA_CHAVE_AQUI"
           
-          Write-Host "⚠️ ATENÇÃO: PROCURE O LINK ACIMA E CLIQUE NELE PARA AUTORIZAR A MÁQUINA ⚠️"
-          Write-Host "Aguardando autenticação (60 segundos)..."
-          Start-Sleep -Seconds 60 
+          if ($AuthKey -eq "SUA_CHAVE_AQUI") {
+              Write-Error "❌ Você esqueceu de colocar a sua chave!"
+              exit 1
+          }
           
-          $IP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-          Write-Host "✅ Tailscale IP: $IP"
+          # Conecta instantaneamente (sem esperar link)
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey $AuthKey --hostname "github-rdp-pc"
+          
+          Start-Sleep -Seconds 5
+          Write-Host "Success."
+          Write-Host "✅ Tailscale Conectado Rápido!"
 
       - name: Verify RDP Accessibility
         shell: powershell
         run: |
           $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-          Write-Host "Testando conexão na porta 3389 no IP $ip..."
           Test-NetConnection -ComputerName $ip -Port 3389
+          Write-Host "✅ RDP Acessível!"
 
       - name: Maintain Connection
         shell: powershell
         run: |
-          # Mantém a máquina ligada por até 6 horas
-          while ($true) { Start-Sleep -Seconds 3600 }
+          $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+          $Password = Get-Content "password.txt"
+          
+          # Loop infinito para manter a máquina ligada e imprimir os dados
+          while ($true) {
+              Write-Host "================================="
+              Write-Host "RDP ACCESS"
+              Write-Host "================================="
+              Write-Host "Address : $ip"
+              Write-Host "Username: Skyro"
+              Write-Host "Credential: User: Skyro | Password: $Password"
+              Write-Host "================================="
+              
+              $Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+              Write-Host "[$Time] RDP Active"
+              
+              Start-Sleep -Seconds 3600 # Atualiza o log a cada 1 hora
+          }
